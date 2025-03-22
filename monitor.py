@@ -44,6 +44,6 @@ if __name__ == "__main__":
     # Store the existing folders
     existing_folders = set(os.listdir(folder_to_watch))
     print(f"Monitoring {folder_to_watch} for new folders coming in") 
-    check_time = 10 #time to check monitor folder
+    check_time = 5 #time to check monitor folder
     wait_time = 5 #time to check coming data files
     check_for_new_folders(check_time=check_time,wait_time=wait_time)  

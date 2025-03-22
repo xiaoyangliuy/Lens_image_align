@@ -17,6 +17,10 @@ from matplotlib.backends.backend_pdf import PdfPages
 #folder to save aligned images, cannot be under the monitored folder
 parent = r'C:\Users\lxiaoyang\Desktop\Zyla'
 save_path = os.path.join(parent, 'aligned')
+#if not monitor:
+monitor = False
+raw_data_path = os.path.join(parent, 'Zyla\P12_S8')
+
 if not os.path.exists(save_path):
     os.makedirs(save_path)
     print(f"Created folder: {save_path}")
@@ -38,9 +42,11 @@ if not os.path.exists(csv_path):
 fn = 'fit_results.csv'
 #for 2D gaussian fitting
 ini_sigma_x, ini_sigma_y = 10, 10 #initial guess for size 
+crop = True
 #for 1D gaussian fitting
 roi_width = 100
 sigma_1d = 6
+crop_r = 7
 #%%
 def read_images_from_folder(folder):
     '''
@@ -68,13 +74,101 @@ def gaussian_2d(xy, amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
     g = offset + amplitude*np.exp( - (a*((x-xo)**2) + 2*b*(x-xo)*(y-yo) + c*((y-yo)**2)))
     return g.ravel()
 
-#%%
-if len(sys.argv) < 2:
-    print("Error: No folder path provided.")
-    sys.exit(1)
+def circle(cen, r, size):
+    row, col = size[0], size[1]
+    x = np.arange(col)
+    y = np.arange(row)
+    x,y = np.meshgrid(x,y)
+    img_circle = np.zeros([row, col],dtype=bool)
+    img_circle[(x-cen[1])**2 + (y-cen[0])**2 < r**2] = True  
+    #img_circle = np.float32(img_circle)
+    return img_circle
 
-# Get the folder path from the argument
-folder = sys.argv[1]
+def apply_mask(image, cen, r):
+    # Get the size of the image (assuming it's a grayscale image)
+    size = image.shape
+    # Generate the circular mask
+    mask = circle(cen, r, size)
+    
+    # Apply the mask: set the outside area to 0
+    image_with_mask = image * mask  # Multiplies element-wise
+    
+    return image_with_mask
+
+# Gaussian function
+def gaussian(x, A, mu, sigma, C):
+    return A * np.exp(-((x - mu) ** 2) / (2 * sigma ** 2)) + C
+def residuals(params, x, y):
+    return y - gaussian(x, *params)
+def fit_and_plot(data, axis_label, subplot_index):
+    '''
+    center is max value position
+    manually set roi_width = 100
+    manually set sigma = 6
+    '''
+    #use max y value to find ROI
+    center_index = np.where(data==np.max(data))[0][0]
+    roi_start = max(center_index - roi_width, 0)
+    roi_end = min(center_index + roi_width, len(data))
+
+    x_data = np.arange(roi_start, roi_end)
+    y_data = data[roi_start:roi_end]
+    #lower_bounds = [-np.inf, -np.inf, 0.1, -np.inf]  # Ensure sigma > 0.1
+    #upper_bounds = [np.inf, np.inf, 100, np.inf]  # Prevent sigma from blowing up
+
+    # Perform Gaussian fit
+    initial_guess = [max(y_data)-min(y_data), center_index, sigma_1d, min(y_data)]  # [A, mu, sigma, C]
+    popt, pcov = curve_fit(gaussian, x_data, y_data, p0=initial_guess,maxfev=10000)
+    A, mu, sigma, C = popt
+    '''''
+    if A < C:
+        print('Do least square fit')
+        res = least_squares(
+        residuals,
+        initial_guess,
+        args=(x_data, y_data),
+        bounds=(lower_bounds, upper_bounds),
+        max_nfev=50000,
+        loss='soft_l1'
+            )   
+        A, mu, sigma, C = res.x
+
+    else:
+        pass
+    '''
+    fwhm = 2.355 * np.abs(sigma)
+
+    # Plot the summation and fit
+    plt.subplot(2, 2, subplot_index)
+    plt.plot(data, label="Summation")
+    plt.axvline(center_index, color='gray', linestyle='--', label="Center")
+    plt.plot(x_data, gaussian(x_data, A,mu,sigma,C), 'r--', label=f"Gaussian Fit\nFWHM={fwhm:.2f}")
+
+    plt.title(f"Summation with Gaussian Fit ({axis_label})")
+    plt.xlabel("Index")
+    plt.ylabel("Sum")
+    plt.legend()
+
+    # Plot the ROI with fit
+    plt.subplot(2, 2, subplot_index + 1)
+    plt.plot(x_data, y_data, 'bo', label="ROI Data")
+    plt.plot(x_data, gaussian(x_data, A,mu,sigma,C), 'r--', label=f"Gaussian Fit\nFWHM={fwhm:.2f}")
+    plt.title(f"ROI with Gaussian Fit ({axis_label})")
+    plt.xlabel("Index (ROI)")
+    plt.ylabel("Sum")
+    plt.legend()
+
+
+    return fwhm, mu, A, C
+#%%
+if monitor:
+    if len(sys.argv) < 2:
+        print("Error: No folder path provided.")
+        sys.exit(1)
+    # Get the folder path from the argument
+    folder = sys.argv[1]
+else:
+    folder = raw_data_path
 print(f"Processing folder: {folder}")
 files = os.listdir(folder)
 print(f"Files in {folder}: {len(files)} files")
@@ -162,109 +256,81 @@ os.makedirs(save_path, exist_ok=True)
 io.imsave(f'{save_path}\\{last_part}.tif',np.float32(img))
 print(f'Done {last_part} shifted image save')
 # %%
-# Gaussian function
-def gaussian(x, A, mu, sigma, C):
-    return A * np.exp(-((x - mu) ** 2) / (2 * sigma ** 2)) + C
-def residuals(params, x, y):
-    return y - gaussian(x, *params)
-def fit_and_plot(data, axis_label, subplot_index):
-    '''
-    center is max value position
-    manually set roi_width = 100
-    manually set sigma = 6
-    '''
-    #use max y value to find ROI
-    center_index = np.where(data==np.max(data))[0][0]
-    roi_start = max(center_index - roi_width, 0)
-    roi_end = min(center_index + roi_width, len(data))
-
-    x_data = np.arange(roi_start, roi_end)
-    y_data = data[roi_start:roi_end]
-    #lower_bounds = [-np.inf, -np.inf, 0.1, -np.inf]  # Ensure sigma > 0.1
-    #upper_bounds = [np.inf, np.inf, 100, np.inf]  # Prevent sigma from blowing up
-
-    # Perform Gaussian fit
-    initial_guess = [max(y_data)-min(y_data), center_index, sigma_1d, min(y_data)]  # [A, mu, sigma, C]
-    popt, pcov = curve_fit(gaussian, x_data, y_data, p0=initial_guess,maxfev=10000)
-    A, mu, sigma, C = popt
-    '''''
-    if A < C:
-        print('Do least square fit')
-        res = least_squares(
-        residuals,
-        initial_guess,
-        args=(x_data, y_data),
-        bounds=(lower_bounds, upper_bounds),
-        max_nfev=50000,
-        loss='soft_l1'
-            )   
-        A, mu, sigma, C = res.x
-
-    else:
-        pass
-    '''
-    fwhm = 2.355 * np.abs(sigma)
-
-    # Plot the summation and fit
-    plt.subplot(2, 2, subplot_index)
-    plt.plot(data, label="Summation")
-    plt.axvline(center_index, color='gray', linestyle='--', label="Center")
-    plt.plot(x_data, gaussian(x_data, A,mu,sigma,C), 'r--', label=f"Gaussian Fit\nFWHM={fwhm:.2f}")
-
-    plt.title(f"Summation with Gaussian Fit ({axis_label})")
-    plt.xlabel("Index")
-    plt.ylabel("Sum")
-    plt.legend()
-
-    # Plot the ROI with fit
-    plt.subplot(2, 2, subplot_index + 1)
-    plt.plot(x_data, y_data, 'bo', label="ROI Data")
-    plt.plot(x_data, gaussian(x_data, A,mu,sigma,C), 'r--', label=f"Gaussian Fit\nFWHM={fwhm:.2f}")
-    plt.title(f"ROI with Gaussian Fit ({axis_label})")
-    plt.xlabel("Index (ROI)")
-    plt.ylabel("Sum")
-    plt.legend()
-
-    return fwhm, mu, A, C
 # Load the TIFF stack file
 image_path = f'{save_path}\\{last_part}.tif'
-#image_path = os.path.join(r'C:\Users\lxiaoyang\Desktop\Zyla\Zyla\aligned', fn_img)
 print(f"Loading image from: {image_path}")
+if not crop:
+    # Open the TIFF stack
+    image = io.imread(image_path)
+    fwhm_col_list = []
+    fwhm_row_list = []
+    pdf_path = f'{processed_path}\\{last_part}_1Dgaussian_fit.pdf'
+    if os.path.exists(pdf_path):
+        os.remove(pdf_path)
+        print(f"Deleted existing file: {pdf_path}")
+    os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+    # Iterate through frames in the TIFF stack
+    with PdfPages(pdf_path) as pdf:
+        for i, frame in enumerate(image):
+            # Convert the frame to a NumPy array
+            frame_array = np.array(frame)
+            
+            # Calculate row and column summations
+            sum_rows = np.sum(frame_array, axis=1)  # Summing columns
+            sum_columns = np.sum(frame_array, axis=0)  # Summing rows
 
-# Open the TIFF stack
-image = Image.open(image_path)
-fwhm_col_list = []
-fwhm_row_list = []
-pdf_path = f'{processed_path}\\{last_part}_1Dgaussian_fit.pdf'
-if os.path.exists(pdf_path):
-    os.remove(pdf_path)
-    print(f"Deleted existing file: {pdf_path}")
-os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
-# Iterate through frames in the TIFF stack
-with PdfPages(pdf_path) as pdf:
-    for i, frame in enumerate(ImageSequence.Iterator(image)):
-        # Convert the frame to a NumPy array
-        frame_array = np.array(frame)
-        
-        # Calculate row and column summations
-        sum_rows = np.sum(frame_array, axis=1)  # Summing columns
-        sum_columns = np.sum(frame_array, axis=0)  # Summing rows
+            # Create a new figure for each frame
+            fig = plt.figure(figsize=(12, 8))
+            fig.suptitle(f"slice {i+1} 1D fit", fontsize=12, fontweight="bold")
+            # Fit and plot for row summation
+            fwhm_row, mu_row, A_row, C_row = fit_and_plot(sum_rows, "Row Direction", 1)
+            fwhm_row_list.append(fwhm_row)
+            # Fit and plot for column summation
+            fwhm_col, mu_col, A_col, C_col = fit_and_plot(sum_columns, "Column Direction", 3)
+            fwhm_col_list.append(fwhm_col)
+            fig.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
+            print(f"Frame {i + 1}:")
+            print(f"  Row Direction - FWHM: {fwhm_row:.2f}, Center: {mu_row:.2f}, Amplitude: {A_row:.2f}, Baseline: {C_row:.2f}")
+            print(f"  Column Direction - FWHM: {fwhm_col:.2f}, Center: {mu_col:.2f}, Amplitude: {A_col:.2f}, Baseline: {C_col:.2f}")
+else:
+    # Open the TIFF stack
+    image = io.imread(image_path)
+    fwhm_col_list = []
+    fwhm_row_list = []
+    pdf_path = f'{processed_path}\\{last_part}_1Dgaussian_fit.pdf'
+    if os.path.exists(pdf_path):
+        os.remove(pdf_path)
+        print(f"Deleted existing file: {pdf_path}")
+    os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+    # Iterate through frames in the TIFF stack
+    with PdfPages(pdf_path) as pdf:
+        yc, xc = np.where(image[0] == np.max(image[0]))
+        for i, frame in enumerate(image):
+            # Convert the frame to a NumPy array
+            frame_array = np.array(frame)
+            frame_array = apply_mask(frame_array, (yc[0],xc[0]), r=crop_r)
+            # Calculate row and column summations
+            sum_rows = np.sum(frame_array, axis=1)  # Summing columns
+            sum_columns = np.sum(frame_array, axis=0)  # Summing rows
 
-        # Create a new figure for each frame
-        fig = plt.figure(figsize=(12, 8))
-        fig.suptitle(f"slice {i+1} 1D fit", fontsize=12, fontweight="bold")
-        # Fit and plot for row summation
-        fwhm_row, mu_row, A_row, C_row = fit_and_plot(sum_rows, "Row Direction", 1)
-        fwhm_row_list.append(fwhm_row)
-        # Fit and plot for column summation
-        fwhm_col, mu_col, A_col, C_col = fit_and_plot(sum_columns, "Column Direction", 3)
-        fwhm_col_list.append(fwhm_col)
-        fig.tight_layout()
-        pdf.savefig(fig)
-        plt.close(fig)
-        print(f"Frame {i + 1}:")
-        print(f"  Row Direction - FWHM: {fwhm_row:.2f}, Center: {mu_row:.2f}, Amplitude: {A_row:.2f}, Baseline: {C_row:.2f}")
-        print(f"  Column Direction - FWHM: {fwhm_col:.2f}, Center: {mu_col:.2f}, Amplitude: {A_col:.2f}, Baseline: {C_col:.2f}")
+            # Create a new figure for each frame
+            fig = plt.figure(figsize=(12, 8))
+            fig.suptitle(f"slice {i+1} 1D fit", fontsize=12, fontweight="bold")
+            # Fit and plot for row summation
+            fwhm_row, mu_row, A_row, C_row = fit_and_plot(sum_rows, "Row Direction", 1)
+            fwhm_row_list.append(fwhm_row)
+            # Fit and plot for column summation
+            fwhm_col, mu_col, A_col, C_col = fit_and_plot(sum_columns, "Column Direction", 3)
+            fwhm_col_list.append(fwhm_col)
+            fig.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
+            print(f"Frame {i + 1}:")
+            print(f"  Row Direction - FWHM: {fwhm_row:.2f}, Center: {mu_row:.2f}, Amplitude: {A_row:.2f}, Baseline: {C_row:.2f}")
+            print(f"  Column Direction - FWHM: {fwhm_col:.2f}, Center: {mu_col:.2f}, Amplitude: {A_col:.2f}, Baseline: {C_col:.2f}")
+            
 print(f'Done {last_part} 1D gaussian fit')
 
 #%%
