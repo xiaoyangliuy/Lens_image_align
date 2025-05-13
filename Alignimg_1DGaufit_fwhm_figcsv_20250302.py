@@ -15,11 +15,11 @@ from matplotlib.backends.backend_pdf import PdfPages
 #%%
 #input parameters
 #folder to save aligned images, cannot be under the monitored folder
-parent = r'C:\Users\lxiaoyang\Desktop\Zyla'
+parent = r'C:\Users\lxiaoyang\Desktop\N41'
 save_path = os.path.join(parent, 'aligned')
 #if not monitor:
 monitor = False
-raw_data_path = os.path.join(parent, 'Zyla\P12_S8')
+raw_data_path = os.path.join(parent, 'N41')
 
 if not os.path.exists(save_path):
     os.makedirs(save_path)
@@ -56,7 +56,7 @@ def read_images_from_folder(folder):
     
     files = sorted(glob.glob(os.path.join(folder, '*.tif')))
     img_ref = io.imread(files[0])
-    img = np.zeros([len(files), img_ref.shape[0], img_ref.shape[0]])
+    img = np.zeros([len(files), img_ref.shape[0], img_ref.shape[1]])
     for i, file in enumerate(files):
         img[i,:,:] = io.imread(file)
     return img
@@ -214,8 +214,8 @@ for i,z in enumerate(range(img.shape[0])):
     sigma_x_list.append(float(sigma_x))
     sigma_y_list.append(float(sigma_y))
     #if use previous beam position as initial guess
-    #ini_x = beam_x #update initial guess for beam position x
-    #ini_y = beam_y #update initial guess for beam position y
+    ini_x = beam_x #update initial guess for beam position x
+    ini_y = beam_y #update initial guess for beam position y
     #use previous sigma as initial guess
     ini_sigma_x = sigma_x
     ini_sigma_y = sigma_y
