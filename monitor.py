@@ -37,13 +37,24 @@ def run_script(folder_path):
     except subprocess.CalledProcessError as e:
         print(f"Error executing script: {e}")
 if __name__ == "__main__":
+<<<<<<< HEAD
     folder_to_watch = r"C:\Users\lxiaoyang\Desktop\Zyla\Zyla"  # Change this to your target directory
     # Path to the script to execute
     script_to_run = r"C:\Research\OneDrive - Argonne National Laboratory\anl\github\Lens_image_align\Alignimg_1DGaufit_fwhm_figcsv_20250302.py"
+=======
+    folder_to_watch = r'/data/Beamline1BM/Mar2025/STTR/Zyla/data'  # Change this to your target directory
+    # Path to the script to execute
+    script_to_run = r'/data/Beamline1BM/Mar2025/scripts/Lens_image_align/Alignimg_1DGaufit_fwhm_figcsv_20250302.py'
+>>>>>>> a524d40d564594319a740c7a31db7e35354e85f9
 
     # Store the existing folders
     existing_folders = set(os.listdir(folder_to_watch))
     print(f"Monitoring {folder_to_watch} for new folders coming in") 
+<<<<<<< HEAD
     check_time = 5 #time to check monitor folder
     wait_time = 5 #time to check coming data files
+=======
+    check_time = 20 #time to check monitor folder
+    wait_time = 10 #time to check coming data files
+>>>>>>> a524d40d564594319a740c7a31db7e35354e85f9
     check_for_new_folders(check_time=check_time,wait_time=wait_time)  
